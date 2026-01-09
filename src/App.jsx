@@ -192,9 +192,11 @@ function App() {
           if (!dateCounts[day]) {
             dateCounts[day] = { completed: 0, total: 0 }
           }
-          dateCounts[day].total += 1/6  // Add 1/6 of a task to total for each day (6 days)
+          // Weekly tasks add 1/3 to each day (not 1/6)
+          // This gives weekly tasks more weight in the completion percentage
+          dateCounts[day].total += 1/3
           if (isCompleted) {
-            dateCounts[day].completed += 1/6  // Add 1/6 completion if completed
+            dateCounts[day].completed += 1/3
           }
         })
 
