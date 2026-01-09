@@ -308,33 +308,31 @@ function App() {
   // Get tooltip content
   const getTooltipDataAttrs = (value) => {
     if (!value || !value.date) {
-      return null
+      return {}
     }
 
     // Build tooltip with breakdown
     const percentage = Math.round(value.count * 100)
-    let tooltip = `${value.date}: ${percentage}%`
+    const parts = [`${value.date}: ${percentage}%`]
 
     // Add daily tasks breakdown if present
     if (value.dailyTotal > 0) {
       const dailyCompletedStr = value.dailyCompleted % 1 === 0 ? value.dailyCompleted.toString() : value.dailyCompleted.toFixed(1)
       const dailyTotalStr = value.dailyTotal % 1 === 0 ? value.dailyTotal.toString() : value.dailyTotal.toFixed(1)
-      tooltip += `\nDaily: ${dailyCompletedStr}/${dailyTotalStr}`
+      parts.push(`Daily: ${dailyCompletedStr}/${dailyTotalStr}`)
     }
 
     // Add weekly tasks breakdown if present
     if (value.weeklyTotal > 0) {
       const weeklyCompletedStr = value.weeklyCompleted % 1 === 0 ? value.weeklyCompleted.toString() : value.weeklyCompleted.toFixed(2)
       const weeklyTotalStr = value.weeklyTotal % 1 === 0 ? value.weeklyTotal.toString() : value.weeklyTotal.toFixed(2)
-      if (value.dailyTotal > 0) {
-        tooltip += `, `
-      } else {
-        tooltip += `\n`
-      }
-      tooltip += `Weekly: ${weeklyCompletedStr}/${weeklyTotalStr}`
+      parts.push(`Weekly: ${weeklyCompletedStr}/${weeklyTotalStr}`)
     }
 
+    const tooltip = parts.join('\n')
+
     return {
+      'data-tip': tooltip,
       'title': tooltip
     }
   }
