@@ -148,6 +148,11 @@ h1 {
   stroke-width: 2px;
 }
 
+/* Hide empty title elements created by the library */
+.react-calendar-heatmap rect title:empty {
+  display: none;
+}
+
 /* Color scale - Percentage-based */
 .color-empty {
   fill: #ebedf0;

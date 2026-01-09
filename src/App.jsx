@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import CalendarHeatmap from 'react-calendar-heatmap'
 import Papa from 'papaparse'
 import { subDays, format, parseISO } from 'date-fns'
@@ -12,6 +12,8 @@ function App() {
   const [fileInputKey, setFileInputKey] = useState(Date.now())
   const [lastFileName, setLastFileName] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
+  const calendarRef = useRef(null)
+  const [tooltip, setTooltip] = useState({ show: false, content: '', x: 0, y: 0 })
 
   // Load saved CSV from localStorage on mount
   useEffect(() => {
@@ -305,6 +307,47 @@ function App() {
 
   const { startDate, endDate } = calculateDateRange()
 
+  // Setup custom tooltip handlers after calendar renders
+  useEffect(() => {
+    if (calendarRef.current && data.length > 0) {
+      const timer = setTimeout(() => {
+        // Remove empty title elements
+        const emptyTitles = calendarRef.current.querySelectorAll('rect title:empty')
+        emptyTitles.forEach(title => title.remove())
+
+        // Add custom tooltip handlers
+        const rects = calendarRef.current.querySelectorAll('rect[title]')
+        rects.forEach(rect => {
+          const handleMouseEnter = (e) => {
+            const content = rect.getAttribute('title')
+            if (content) {
+              const containerRect = calendarRef.current.getBoundingClientRect()
+              setTooltip({
+                show: true,
+                content,
+                x: e.clientX - containerRect.left + 10,
+                y: e.clientY - containerRect.top - 10
+              })
+            }
+          }
+
+          const handleMouseLeave = () => {
+            setTooltip({ show: false, content: '', x: 0, y: 0 })
+          }
+
+          rect.addEventListener('mouseenter', handleMouseEnter)
+          rect.addEventListener('mouseleave', handleMouseLeave)
+
+          return () => {
+            rect.removeEventListener('mouseenter', handleMouseEnter)
+            rect.removeEventListener('mouseleave', handleMouseLeave)
+          }
+        })
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [data])
+
   // Get tooltip content
   const getTooltipDataAttrs = (value) => {
     if (!value || !value.date) {
@@ -332,7 +375,6 @@ function App() {
     const tooltip = parts.join('\n')
 
     return {
-      'data-tip': tooltip,
       'title': tooltip
     }
   }
@@ -409,24 +451,46 @@ function App() {
             )}
           </p>
 
-          <CalendarHeatmap
-            startDate={startDate}
-            endDate={endDate}
-            values={data}
-            classForValue={(value) => {
-              if (!value || value.count === 0) {
-                return 'color-empty'
-              }
-              // Color based on completion percentage (0-1)
-              if (value.count >= 1.0) return 'color-scale-4'  // 100% - darkest green
-              if (value.count >= 0.75) return 'color-scale-3' // 75-99% - dark green
-              if (value.count >= 0.5) return 'color-scale-2'  // 50-74% - medium green
-              if (value.count >= 0.25) return 'color-scale-1' // 25-49% - light green
-              return 'color-scale-0' // 1-24% - lightest green
-            }}
-            tooltipDataAttrs={getTooltipDataAttrs}
-            showWeekdayLabels={true}
-          />
+          <div ref={calendarRef} style={{ position: 'relative' }}>
+            <CalendarHeatmap
+              startDate={startDate}
+              endDate={endDate}
+              values={data}
+              classForValue={(value) => {
+                if (!value || value.count === 0) {
+                  return 'color-empty'
+                }
+                // Color based on completion percentage (0-1)
+                if (value.count >= 1.0) return 'color-scale-4'  // 100% - darkest green
+                if (value.count >= 0.75) return 'color-scale-3' // 75-99% - dark green
+                if (value.count >= 0.5) return 'color-scale-2'  // 50-74% - medium green
+                if (value.count >= 0.25) return 'color-scale-1' // 25-49% - light green
+                return 'color-scale-0' // 1-24% - lightest green
+              }}
+              tooltipDataAttrs={getTooltipDataAttrs}
+              showWeekdayLabels={true}
+            />
+            {tooltip.show && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: tooltip.x,
+                  top: tooltip.y,
+                  background: 'rgba(0, 0, 0, 0.8)',
+                  color: 'white',
+                  padding: '8px 12px',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  whiteSpace: 'pre-line',
+                  zIndex: 1000,
+                  pointerEvents: 'none',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
+                }}
+              >
+                {tooltip.content}
+              </div>
+            )}
+          </div>
 
           <div className="legend">
             <span>0%</span>
