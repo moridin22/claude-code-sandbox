@@ -9,6 +9,7 @@ function App() {
   const [data, setData] = useState([])
   const [error, setError] = useState(null)
   const [csvFormat, setCsvFormat] = useState('auto')
+  const [fileInputKey, setFileInputKey] = useState(Date.now())
 
   // Generate sample data
   const generateSampleData = () => {
@@ -30,6 +31,7 @@ function App() {
 
     setData(sampleData)
     setError(null)
+    setFileInputKey(Date.now()) // Reset file input
   }
 
   // Handle CSV file upload
@@ -44,6 +46,7 @@ function App() {
           const parsedData = parseCSVData(results.data)
           setData(parsedData)
           setError(null)
+          setFileInputKey(Date.now()) // Reset file input for next upload
         } catch (err) {
           setError(err.message)
         }
@@ -167,9 +170,27 @@ function App() {
     return parsed
   }
 
-  // Calculate date range (show last year)
-  const endDate = new Date()
-  const startDate = subDays(endDate, 365)
+  // Calculate date range dynamically based on data
+  const calculateDateRange = () => {
+    if (data.length === 0) {
+      const endDate = new Date()
+      const startDate = subDays(endDate, 365)
+      return { startDate, endDate }
+    }
+
+    // Find min and max dates in the data
+    const dates = data.map(d => new Date(d.date))
+    const minDate = new Date(Math.min(...dates))
+    const maxDate = new Date(Math.max(...dates))
+
+    // Add some padding (30 days before and after)
+    const startDate = subDays(minDate, 30)
+    const endDate = new Date(Math.max(maxDate, new Date())) // At least show up to today
+
+    return { startDate, endDate }
+  }
+
+  const { startDate, endDate } = calculateDateRange()
 
   // Get tooltip content
   const getTooltipDataAttrs = (value) => {
@@ -191,6 +212,7 @@ function App() {
             📁 Upload CSV File
           </label>
           <input
+            key={fileInputKey}
             id="file-upload"
             type="file"
             accept=".csv"
