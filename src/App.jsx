@@ -17,6 +17,10 @@ function App() {
   const [syncStatus, setSyncStatus] = useState('idle') // 'idle', 'loading', 'success', 'error'
   const [binId, setBinId] = useState(null)
   const [customId, setCustomId] = useState(null)
+  const [registryBinId, setRegistryBinId] = useState(null)
+
+  // JSONBin API key
+  const JSONBIN_API_KEY = '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS'
 
   // Load saved CSV from localStorage and check for cloud sync on mount
   useEffect(() => {
@@ -24,6 +28,7 @@ function App() {
     const savedFileName = localStorage.getItem('streaks-csv-filename')
     const savedBinId = localStorage.getItem('streaks-bin-id')
     const savedCustomId = localStorage.getItem('streaks-custom-id')
+    const savedRegistryBinId = localStorage.getItem('streaks-registry-bin-id')
 
     if (savedBinId) {
       setBinId(savedBinId)
@@ -31,14 +36,26 @@ function App() {
     if (savedCustomId) {
       setCustomId(savedCustomId)
     }
+    if (savedRegistryBinId) {
+      setRegistryBinId(savedRegistryBinId)
+    }
 
     // Check URL for data parameter
     const urlParams = new URLSearchParams(window.location.search)
     const urlDataId = urlParams.get('data')
+    const urlRegistryId = urlParams.get('reg')
+
+    // If URL contains registry ID, save it for lookups
+    if (urlRegistryId && !savedRegistryBinId) {
+      console.log(`Found registry ID in URL: ${urlRegistryId}`)
+      setRegistryBinId(urlRegistryId)
+      localStorage.setItem('streaks-registry-bin-id', urlRegistryId)
+    }
 
     if (urlDataId) {
       console.log(`Found data ID in URL: ${urlDataId}`)
-      loadFromCloud(urlDataId)
+      // Pass the registry ID from URL if available
+      loadFromCloud(urlDataId, urlRegistryId || savedRegistryBinId)
       return
     }
 
@@ -212,28 +229,33 @@ function App() {
         localStorage.setItem('streaks-custom-id', currentCustomId)
       }
 
+      // Get or create the registry bin for word mappings
+      const currentRegistryBinId = await getOrCreateRegistry()
+
       const payload = {
         csvData: cleanedCsvData,
         fileName,
         customId: currentCustomId,
+        registryBinId: currentRegistryBinId, // Include registry ID so others can discover it
         lastUpdated: new Date().toISOString()
       }
 
-      console.log('Syncing payload:', { 
+      console.log('Syncing payload:', {
         payloadSize: JSON.stringify(payload).length,
         fileName,
         originalCsvLength: csvData.length,
-        cleanedCsvLength: cleanedCsvData.length
+        cleanedCsvLength: cleanedCsvData.length,
+        registryBinId: currentRegistryBinId
       })
 
       let url, method, headers
       if (binId) {
-        // Update existing bin
-        url = `https://api.jsonbin.io/v3/b/${customId || binId}`
+        // Update existing bin - always use the actual bin ID, not the custom word
+        url = `https://api.jsonbin.io/v3/b/${binId}`
         method = 'PUT'
         headers = {
           'Content-Type': 'application/json',
-          'X-Master-Key': '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS'
+          'X-Master-Key': JSONBIN_API_KEY
         }
       } else {
         // Create new bin
@@ -241,7 +263,7 @@ function App() {
         method = 'POST'
         headers = {
           'Content-Type': 'application/json',
-          'X-Master-Key': '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS',
+          'X-Master-Key': JSONBIN_API_KEY,
           'X-Bin-Name': `streaks-${currentCustomId}`,
           'X-Bin-Private': 'false'
         }
@@ -288,69 +310,143 @@ function App() {
     }
   }
 
-  // Registry bin ID for storing word -> bin ID mappings
-  const REGISTRY_BIN_ID = '678c2f8e0bd3c5b86a123456' // Fixed registry bin
-  
-  // Look up actual bin ID from custom word
-  const lookupBinId = async (customWord) => {
-    try {
-      const response = await fetch(`https://api.jsonbin.io/v3/b/${REGISTRY_BIN_ID}/latest`, {
-        headers: {
-          'X-Master-Key': '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS'
+  // Get or create the registry bin for word -> bin ID mappings
+  const getOrCreateRegistry = async () => {
+    // First check localStorage for existing registry bin ID
+    let currentRegistryBinId = registryBinId || localStorage.getItem('streaks-registry-bin-id')
+
+    if (currentRegistryBinId) {
+      // Verify the registry bin still exists
+      try {
+        const response = await fetch(`https://api.jsonbin.io/v3/b/${currentRegistryBinId}/latest`, {
+          headers: { 'X-Master-Key': JSONBIN_API_KEY }
+        })
+        if (response.ok) {
+          console.log('Using existing registry bin:', currentRegistryBinId)
+          return currentRegistryBinId
         }
+      } catch {
+        console.log('Existing registry bin not accessible, will create new one')
+      }
+    }
+
+    // Create a new registry bin
+    console.log('Creating new registry bin...')
+    try {
+      const response = await fetch('https://api.jsonbin.io/v3/b', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Master-Key': JSONBIN_API_KEY,
+          'X-Bin-Name': 'streaks-word-registry',
+          'X-Bin-Private': 'false'
+        },
+        body: JSON.stringify({ _meta: { created: new Date().toISOString() } })
       })
-      
+
+      if (response.ok) {
+        const result = await response.json()
+        const newRegistryId = result.metadata.id
+        console.log('Created new registry bin:', newRegistryId)
+
+        // Save to state and localStorage
+        setRegistryBinId(newRegistryId)
+        localStorage.setItem('streaks-registry-bin-id', newRegistryId)
+
+        return newRegistryId
+      }
+    } catch (err) {
+      console.error('Failed to create registry bin:', err)
+    }
+
+    return null
+  }
+
+  // Look up actual bin ID from custom word using a specific registry
+  const lookupBinIdWithRegistry = async (customWord, specificRegistryBinId) => {
+    if (!specificRegistryBinId) {
+      console.log('No registry bin ID provided for lookup')
+      return null
+    }
+
+    try {
+      console.log(`Looking up "${customWord}" in registry ${specificRegistryBinId}`)
+      const response = await fetch(`https://api.jsonbin.io/v3/b/${specificRegistryBinId}/latest`, {
+        headers: { 'X-Master-Key': JSONBIN_API_KEY }
+      })
+
       if (response.ok) {
         const result = await response.json()
         const registry = result.record || {}
-        return registry[customWord] || null
+        const foundBinId = registry[customWord]
+
+        if (foundBinId) {
+          console.log(`Found bin ID for "${customWord}": ${foundBinId}`)
+          return foundBinId
+        } else {
+          console.log(`Custom word "${customWord}" not found in registry. Available words:`, Object.keys(registry))
+        }
+      } else {
+        console.log('Registry fetch failed:', response.status, response.statusText)
       }
     } catch (err) {
-      console.log('Registry lookup failed, will try direct approach')
+      console.error('Registry lookup error:', err)
     }
     return null
   }
 
   // Register a custom word -> bin ID mapping
-  const registerCustomWord = async (customWord, binId) => {
+  const registerCustomWord = async (customWord, dataBinId) => {
     try {
+      // Get or create registry bin
+      const currentRegistryBinId = await getOrCreateRegistry()
+      if (!currentRegistryBinId) {
+        console.error('Cannot register word: no registry bin available')
+        return false
+      }
+
       // Get existing registry
       let registry = {}
       try {
-        const response = await fetch(`https://api.jsonbin.io/v3/b/${REGISTRY_BIN_ID}/latest`, {
-          headers: {
-            'X-Master-Key': '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS'
-          }
+        const response = await fetch(`https://api.jsonbin.io/v3/b/${currentRegistryBinId}/latest`, {
+          headers: { 'X-Master-Key': JSONBIN_API_KEY }
         })
         if (response.ok) {
           const result = await response.json()
           registry = result.record || {}
         }
-      } catch (err) {
-        console.log('Creating new registry')
+      } catch {
+        console.log('Starting with empty registry')
       }
-      
+
       // Add new mapping
-      registry[customWord] = binId
-      
+      registry[customWord] = dataBinId
+
       // Update registry
-      await fetch(`https://api.jsonbin.io/v3/b/${REGISTRY_BIN_ID}`, {
+      const updateResponse = await fetch(`https://api.jsonbin.io/v3/b/${currentRegistryBinId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'X-Master-Key': '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS'
+          'X-Master-Key': JSONBIN_API_KEY
         },
         body: JSON.stringify(registry)
       })
-      
-      console.log(`Registered ${customWord} -> ${binId}`)
+
+      if (updateResponse.ok) {
+        console.log(`Registered "${customWord}" -> ${dataBinId} in registry ${currentRegistryBinId}`)
+        return true
+      } else {
+        console.error('Failed to update registry:', updateResponse.status, updateResponse.statusText)
+        return false
+      }
     } catch (err) {
       console.error('Failed to register custom word:', err)
+      return false
     }
   }
 
   // Load data from cloud
-  const loadFromCloud = async (inputId = null) => {
+  const loadFromCloud = async (inputId = null, urlRegistryBinId = null) => {
     const targetId = inputId || customId || binId
     if (!targetId) {
       setError('No cloud data ID provided')
@@ -358,14 +454,28 @@ function App() {
     }
 
     setSyncStatus('loading')
-    
+
     try {
       let actualBinId = targetId
-      
+
       // If it looks like a custom word, look it up in the registry
       if (inputId && inputId.length < 30 && /^[a-zA-Z]+$/.test(inputId)) {
         console.log(`Looking up custom word: ${inputId}`)
-        const lookedUpBinId = await lookupBinId(inputId)
+
+        // Use registry from URL, state, or localStorage
+        const effectiveRegistryId = urlRegistryBinId || registryBinId || localStorage.getItem('streaks-registry-bin-id')
+
+        if (!effectiveRegistryId) {
+          throw new Error(`Cannot look up custom word "${inputId}": no registry available. Make sure the share URL includes the registry parameter.`)
+        }
+
+        // Temporarily set registry bin ID for lookup
+        if (urlRegistryBinId && !registryBinId) {
+          setRegistryBinId(urlRegistryBinId)
+          localStorage.setItem('streaks-registry-bin-id', urlRegistryBinId)
+        }
+
+        const lookedUpBinId = await lookupBinIdWithRegistry(inputId, effectiveRegistryId)
         if (lookedUpBinId) {
           actualBinId = lookedUpBinId
           console.log(`Found bin ID for "${inputId}": ${actualBinId}`)
@@ -376,7 +486,7 @@ function App() {
       
       const response = await fetch(`https://api.jsonbin.io/v3/b/${actualBinId}/latest`, {
         headers: {
-          'X-Master-Key': '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS'
+          'X-Master-Key': JSONBIN_API_KEY
         }
       })
 
@@ -385,17 +495,23 @@ function App() {
       }
 
       const result = await response.json()
-      const { csvData, fileName, customId: loadedCustomId } = result.record
+      const { csvData, fileName, customId: loadedCustomId, registryBinId: loadedRegistryBinId } = result.record
 
       if (csvData && fileName) {
         // Save to localStorage
         localStorage.setItem('streaks-csv-data', csvData)
         localStorage.setItem('streaks-csv-filename', fileName)
-        
-        // Update IDs if loading from external source
-        if (inputId && inputId !== binId) {
-          setBinId(inputId)
-          localStorage.setItem('streaks-bin-id', inputId)
+
+        // Update bin ID to the actual bin ID (not the custom word)
+        if (actualBinId && actualBinId !== binId) {
+          setBinId(actualBinId)
+          localStorage.setItem('streaks-bin-id', actualBinId)
+        }
+
+        // If the loaded data has a registry bin ID, save it for future lookups
+        if (loadedRegistryBinId && !registryBinId) {
+          setRegistryBinId(loadedRegistryBinId)
+          localStorage.setItem('streaks-registry-bin-id', loadedRegistryBinId)
         }
         
         if (loadedCustomId && loadedCustomId !== customId) {
@@ -772,11 +888,11 @@ function App() {
                   <strong>Shareable Link:</strong>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.3rem' }}>
                     <code style={{ flex: 1, fontSize: '0.75rem', wordBreak: 'break-all' }}>
-                      {window.location.origin}{window.location.pathname}?data={customId || binId}
+                      {window.location.origin}{window.location.pathname}?data={customId || binId}{registryBinId ? `&reg=${registryBinId}` : ''}
                     </code>
                     <button
                       onClick={() => {
-                        const shareUrl = `${window.location.origin}${window.location.pathname}?data=${customId || binId}`
+                        const shareUrl = `${window.location.origin}${window.location.pathname}?data=${customId || binId}${registryBinId ? `&reg=${registryBinId}` : ''}`
                         navigator.clipboard.writeText(shareUrl)
                         alert('Link copied to clipboard!')
                       }}
@@ -790,7 +906,7 @@ function App() {
                         cursor: 'pointer'
                       }}
                     >
-                      📋 Copy
+                      Copy
                     </button>
                   </div>
                 </div>
