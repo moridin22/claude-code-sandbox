@@ -148,10 +148,15 @@ h1 {
   stroke-width: 2px;
 }
 
-/* Color scale - GitHub style */
+/* Color scale - Percentage-based */
 .color-empty {
   fill: #ebedf0;
   background: #ebedf0;
+}
+
+.color-scale-0 {
+  fill: #c6e6c3;
+  background: #c6e6c3;
 }
 
 .color-scale-1 {

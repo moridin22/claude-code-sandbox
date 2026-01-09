@@ -132,7 +132,7 @@ function App() {
 
   // Parse streaks app CSV format
   const parseStreaksAppCSV = (csvData) => {
-    const dateCounts = {}
+    const dateCounts = {} // { date: { completed: 0, total: 0 } }
     let parsedDailyCount = 0
     let parsedWeeklyCount = 0
     let skippedCount = 0
@@ -141,8 +141,12 @@ function App() {
       // Skip empty rows
       if (!row || !row.entry_date || !row.entry_type) return
 
-      // Only count completed tasks (ignore missed)
-      if (!row.entry_type.toLowerCase().includes('completed')) {
+      const entryType = row.entry_type.toLowerCase()
+      const isCompleted = entryType.includes('completed')
+      const isMissed = entryType.includes('missed')
+
+      // Only count completed or missed tasks
+      if (!isCompleted && !isMissed) {
         skippedCount++
         return
       }
@@ -171,9 +175,12 @@ function App() {
       // Handle daily tasks (page 0 or empty)
       if (pageValue === '' || pageValue === '0') {
         if (!dateCounts[dateStr]) {
-          dateCounts[dateStr] = 0
+          dateCounts[dateStr] = { completed: 0, total: 0 }
         }
-        dateCounts[dateStr]++
+        dateCounts[dateStr].total++
+        if (isCompleted) {
+          dateCounts[dateStr].completed++
+        }
         parsedDailyCount++
       }
       // Handle weekly tasks (page 1)
@@ -183,13 +190,16 @@ function App() {
 
         weekDays.forEach(day => {
           if (!dateCounts[day]) {
-            dateCounts[day] = 0
+            dateCounts[day] = { completed: 0, total: 0 }
           }
-          dateCounts[day] += 1/3 // Add 1/3 completion to each day of the week
+          dateCounts[day].total += 1/6  // Add 1/6 of a task to total for each day (6 days)
+          if (isCompleted) {
+            dateCounts[day].completed += 1/6  // Add 1/6 completion if completed
+          }
         })
 
         parsedWeeklyCount++
-        console.log(`Added weekly task for week of ${format(sunday, 'MMM d, yyyy')} (${weekDays.length} days)`)
+        console.log(`Added weekly task (${isCompleted ? 'completed' : 'missed'}) for week of ${format(sunday, 'MMM d, yyyy')} (${weekDays.length} days)`)
       }
       // Skip other pages
       else {
@@ -200,17 +210,25 @@ function App() {
 
     console.log(`Parsed ${parsedDailyCount} daily entries, ${parsedWeeklyCount} weekly entries, skipped ${skippedCount} entries`)
 
-    // Convert to array format
-    const parsed = Object.entries(dateCounts).map(([date, count]) => ({
-      date,
-      count
-    }))
+    // Convert to array format with percentage as count
+    const parsed = Object.entries(dateCounts).map(([date, counts]) => {
+      const percentage = counts.total > 0 ? (counts.completed / counts.total) : 0
+      return {
+        date,
+        count: percentage, // 0 to 1 representing 0% to 100%
+        completed: counts.completed,
+        total: counts.total
+      }
+    })
 
-    if (parsed.length === 0) {
-      throw new Error('No completed tasks found in CSV')
+    // Filter out days with no tasks at all
+    const filtered = parsed.filter(entry => entry.total > 0)
+
+    if (filtered.length === 0) {
+      throw new Error('No completed or missed tasks found in CSV')
     }
 
-    return parsed
+    return filtered
   }
 
   // Parse generic CSV formats
@@ -284,11 +302,12 @@ function App() {
     if (!value || !value.date) {
       return null
     }
-    // Format count to show decimals if fractional, otherwise whole number
-    const countStr = value.count % 1 === 0 ? value.count.toString() : value.count.toFixed(2)
-    const taskLabel = value.count === 1 ? 'task' : 'tasks'
+    // Show completion percentage and counts
+    const percentage = Math.round(value.count * 100)
+    const completedStr = value.completed % 1 === 0 ? value.completed.toString() : value.completed.toFixed(2)
+    const totalStr = value.total % 1 === 0 ? value.total.toString() : value.total.toFixed(2)
     return {
-      'data-tip': `${value.date}: ${countStr} ${taskLabel} completed`
+      'data-tip': `${value.date}: ${percentage}% (${completedStr}/${totalStr} tasks)`
     }
   }
 
@@ -340,12 +359,12 @@ function App() {
           <p><strong>Supported CSV Formats:</strong></p>
           <ul style={{ textAlign: 'left', margin: '0.5rem 0' }}>
             <li><strong>Streaks apps:</strong> Automatically detects exports with <code>entry_date</code> and <code>entry_type</code> columns</li>
-            <li style={{ marginTop: '0.3rem' }}><strong>Daily tasks (page 0):</strong> Each completion counts as 1</li>
-            <li style={{ marginTop: '0.3rem' }}><strong>Weekly tasks (page 1):</strong> Each completion adds 1/3 to every day from Sunday to Friday of that week</li>
+            <li style={{ marginTop: '0.3rem' }}><strong>Daily tasks (page 0):</strong> Counted as daily goals</li>
+            <li style={{ marginTop: '0.3rem' }}><strong>Weekly tasks (page 1):</strong> Distributed evenly across Sunday to Friday</li>
             <li style={{ marginTop: '0.3rem' }}><strong>Generic:</strong> <code>date,count</code> or <code>day,value</code> format</li>
           </ul>
           <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
-            Only completed tasks are counted. Missed tasks are ignored.
+            <strong>Color = Completion %:</strong> Darkest green means 100% of tasks completed for that day. Both completed and missed tasks are tracked.
           </p>
         </div>
       </div>
@@ -355,7 +374,7 @@ function App() {
           <h2>Your Streak Calendar</h2>
           <p className="stats">
             Total days tracked: <strong>{data.length}</strong> |
-            Total completions: <strong>{data.reduce((sum, d) => sum + d.count, 0)}</strong>
+            Overall completion: <strong>{Math.round((data.reduce((sum, d) => sum + d.completed, 0) / data.reduce((sum, d) => sum + d.total, 0)) * 100)}%</strong> ({data.reduce((sum, d) => sum + d.completed, 0).toFixed(1)} / {data.reduce((sum, d) => sum + d.total, 0).toFixed(1)} tasks)
           </p>
           <p className="stats" style={{ fontSize: '0.85rem', color: '#666' }}>
             Date range: <strong>{format(startDate, 'MMM d, yyyy')}</strong> to <strong>{format(endDate, 'MMM d, yyyy')}</strong>
@@ -372,26 +391,28 @@ function App() {
               if (!value || value.count === 0) {
                 return 'color-empty'
               }
-              // Support fractional counts from weekly tasks
-              if (value.count < 1) return 'color-scale-1'
-              if (value.count < 2) return 'color-scale-2'
-              if (value.count < 4) return 'color-scale-3'
-              return 'color-scale-4'
+              // Color based on completion percentage (0-1)
+              if (value.count >= 1.0) return 'color-scale-4'  // 100% - darkest green
+              if (value.count >= 0.75) return 'color-scale-3' // 75-99% - dark green
+              if (value.count >= 0.5) return 'color-scale-2'  // 50-74% - medium green
+              if (value.count >= 0.25) return 'color-scale-1' // 25-49% - light green
+              return 'color-scale-0' // 1-24% - lightest green
             }}
             tooltipDataAttrs={getTooltipDataAttrs}
             showWeekdayLabels={true}
           />
 
           <div className="legend">
-            <span>Less</span>
+            <span>0%</span>
             <div className="legend-scale">
               <div className="color-empty"></div>
+              <div className="color-scale-0"></div>
               <div className="color-scale-1"></div>
               <div className="color-scale-2"></div>
               <div className="color-scale-3"></div>
               <div className="color-scale-4"></div>
             </div>
-            <span>More</span>
+            <span>100%</span>
           </div>
         </div>
       )}
