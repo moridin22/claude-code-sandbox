@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import CalendarHeatmap from 'react-calendar-heatmap'
 import Papa from 'papaparse'
 import { subDays, format, parseISO } from 'date-fns'
@@ -10,51 +10,88 @@ function App() {
   const [error, setError] = useState(null)
   const [csvFormat, setCsvFormat] = useState('auto')
   const [fileInputKey, setFileInputKey] = useState(Date.now())
+  const [lastFileName, setLastFileName] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Generate sample data
-  const generateSampleData = () => {
-    const sampleData = []
-    const today = new Date()
+  // Load saved CSV from localStorage on mount
+  useEffect(() => {
+    const savedCSV = localStorage.getItem('streaks-csv-data')
+    const savedFileName = localStorage.getItem('streaks-csv-filename')
 
-    // Create 365 days of sample data
-    for (let i = 0; i < 365; i++) {
-      const date = subDays(today, i)
-      // Random completion count (0-5 tasks per day)
-      const count = Math.floor(Math.random() * 6)
-      if (count > 0) {
-        sampleData.push({
-          date: format(date, 'yyyy-MM-dd'),
-          count: count
+    if (savedCSV && savedFileName) {
+      try {
+        Papa.parse(savedCSV, {
+          header: true,
+          complete: (results) => {
+            try {
+              const parsedData = parseCSVData(results.data)
+              setData(parsedData)
+              setLastFileName(savedFileName)
+              setError(null)
+              console.log(`Auto-loaded saved CSV: ${savedFileName}`)
+            } catch (err) {
+              setError('Failed to load saved CSV: ' + err.message)
+            }
+            setIsLoading(false)
+          },
+          error: (err) => {
+            setError('Failed to parse saved CSV: ' + err.message)
+            setIsLoading(false)
+          }
         })
+      } catch (err) {
+        console.error('Failed to load saved CSV:', err)
+        setIsLoading(false)
       }
+    } else {
+      setIsLoading(false)
     }
-
-    setData(sampleData)
-    setError(null)
-    setFileInputKey(Date.now()) // Reset file input
-  }
+  }, [])
 
   // Handle CSV file upload
   const handleFileUpload = (event) => {
     const file = event.target.files[0]
     if (!file) return
 
-    Papa.parse(file, {
-      header: true,
-      complete: (results) => {
-        try {
-          const parsedData = parseCSVData(results.data)
-          setData(parsedData)
-          setError(null)
-          setFileInputKey(Date.now()) // Reset file input for next upload
-        } catch (err) {
-          setError(err.message)
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const csvContent = e.target.result
+
+      Papa.parse(csvContent, {
+        header: true,
+        complete: (results) => {
+          try {
+            const parsedData = parseCSVData(results.data)
+            setData(parsedData)
+            setLastFileName(file.name)
+            setError(null)
+            setFileInputKey(Date.now()) // Reset file input for next upload
+
+            // Save to localStorage
+            localStorage.setItem('streaks-csv-data', csvContent)
+            localStorage.setItem('streaks-csv-filename', file.name)
+            console.log(`Saved CSV to localStorage: ${file.name}`)
+          } catch (err) {
+            setError(err.message)
+          }
+        },
+        error: (err) => {
+          setError('Failed to parse CSV: ' + err.message)
         }
-      },
-      error: (err) => {
-        setError('Failed to parse CSV: ' + err.message)
-      }
-    })
+      })
+    }
+    reader.readAsText(file)
+  }
+
+  // Clear saved CSV data
+  const clearSavedData = () => {
+    localStorage.removeItem('streaks-csv-data')
+    localStorage.removeItem('streaks-csv-filename')
+    setData([])
+    setLastFileName(null)
+    setError(null)
+    setFileInputKey(Date.now())
+    console.log('Cleared saved CSV data')
   }
 
   // Parse CSV data - supports multiple formats
@@ -255,6 +292,15 @@ function App() {
     }
   }
 
+  if (isLoading) {
+    return (
+      <div className="app">
+        <h1>📅 Streak Calendar Visualization</h1>
+        <div className="loading">Loading saved data...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="app">
       <h1>📅 Streak Calendar Visualization</h1>
@@ -272,10 +318,21 @@ function App() {
             onChange={handleFileUpload}
             className="file-input"
           />
-          <button onClick={generateSampleData} className="sample-btn">
-            🎲 Load Sample Data
-          </button>
+          {lastFileName && (
+            <button onClick={clearSavedData} className="clear-btn">
+              🗑️ Clear Data
+            </button>
+          )}
         </div>
+
+        {lastFileName && (
+          <div className="file-info">
+            📄 Currently loaded: <strong>{lastFileName}</strong>
+            <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
+              (Auto-loads on next visit)
+            </span>
+          </div>
+        )}
 
         {error && <div className="error">{error}</div>}
 
@@ -341,7 +398,10 @@ function App() {
 
       {data.length === 0 && !error && (
         <div className="empty-state">
-          <p>👆 Upload a CSV file or load sample data to get started!</p>
+          <p>👆 Upload a CSV file to get started!</p>
+          <p style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#888' }}>
+            Your file will be remembered and auto-loaded next time you visit.
+          </p>
         </div>
       )}
     </div>
