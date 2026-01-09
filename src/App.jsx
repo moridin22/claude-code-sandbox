@@ -270,6 +270,13 @@ function App() {
         setBinId(newBinId)
         localStorage.setItem('streaks-bin-id', newBinId)
       }
+      
+      console.log(`Data synced! Bin ID: ${newBinId}, Custom ID: ${currentCustomId}`)
+      
+      // Register the custom word in the registry
+      if (currentCustomId && newBinId) {
+        await registerCustomWord(currentCustomId, newBinId)
+      }
 
       setSyncStatus('success')
       // Don't auto-hide success message
@@ -278,6 +285,67 @@ function App() {
       setError('Sync failed: ' + err.message)
       setSyncStatus('error')
       setTimeout(() => setSyncStatus('idle'), 3000)
+    }
+  }
+
+  // Registry bin ID for storing word -> bin ID mappings
+  const REGISTRY_BIN_ID = '678c2f8e0bd3c5b86a123456' // Fixed registry bin
+  
+  // Look up actual bin ID from custom word
+  const lookupBinId = async (customWord) => {
+    try {
+      const response = await fetch(`https://api.jsonbin.io/v3/b/${REGISTRY_BIN_ID}/latest`, {
+        headers: {
+          'X-Master-Key': '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS'
+        }
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        const registry = result.record || {}
+        return registry[customWord] || null
+      }
+    } catch (err) {
+      console.log('Registry lookup failed, will try direct approach')
+    }
+    return null
+  }
+
+  // Register a custom word -> bin ID mapping
+  const registerCustomWord = async (customWord, binId) => {
+    try {
+      // Get existing registry
+      let registry = {}
+      try {
+        const response = await fetch(`https://api.jsonbin.io/v3/b/${REGISTRY_BIN_ID}/latest`, {
+          headers: {
+            'X-Master-Key': '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS'
+          }
+        })
+        if (response.ok) {
+          const result = await response.json()
+          registry = result.record || {}
+        }
+      } catch (err) {
+        console.log('Creating new registry')
+      }
+      
+      // Add new mapping
+      registry[customWord] = binId
+      
+      // Update registry
+      await fetch(`https://api.jsonbin.io/v3/b/${REGISTRY_BIN_ID}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Master-Key': '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS'
+        },
+        body: JSON.stringify(registry)
+      })
+      
+      console.log(`Registered ${customWord} -> ${binId}`)
+    } catch (err) {
+      console.error('Failed to register custom word:', err)
     }
   }
 
@@ -292,8 +360,21 @@ function App() {
     setSyncStatus('loading')
     
     try {
-      // Use the ID directly - it should be either a custom word or actual bin ID
-      const response = await fetch(`https://api.jsonbin.io/v3/b/${targetId}/latest`, {
+      let actualBinId = targetId
+      
+      // If it looks like a custom word, look it up in the registry
+      if (inputId && inputId.length < 30 && /^[a-zA-Z]+$/.test(inputId)) {
+        console.log(`Looking up custom word: ${inputId}`)
+        const lookedUpBinId = await lookupBinId(inputId)
+        if (lookedUpBinId) {
+          actualBinId = lookedUpBinId
+          console.log(`Found bin ID for "${inputId}": ${actualBinId}`)
+        } else {
+          throw new Error(`Custom word "${inputId}" not found in registry`)
+        }
+      }
+      
+      const response = await fetch(`https://api.jsonbin.io/v3/b/${actualBinId}/latest`, {
         headers: {
           'X-Master-Key': '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS'
         }
