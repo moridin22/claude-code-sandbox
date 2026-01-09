@@ -1,0 +1,203 @@
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+}
+
+h1 {
+  text-align: center;
+  color: #333;
+  margin-bottom: 2rem;
+}
+
+.controls {
+  background: #f5f5f5;
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+}
+
+.upload-section {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.file-label {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background: #4CAF50;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.3s;
+}
+
+.file-label:hover {
+  background: #45a049;
+}
+
+.file-input {
+  display: none;
+}
+
+.sample-btn {
+  padding: 0.75rem 1.5rem;
+  background: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.3s;
+}
+
+.sample-btn:hover {
+  background: #0b7dda;
+}
+
+.info {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.info p {
+  margin: 0.5rem 0;
+}
+
+.info code {
+  background: #e0e0e0;
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+}
+
+.error {
+  background: #ffebee;
+  color: #c62828;
+  padding: 1rem;
+  border-radius: 4px;
+  margin: 1rem 0;
+  border-left: 4px solid #c62828;
+}
+
+.calendar-container {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.calendar-container h2 {
+  margin-top: 0;
+  color: #333;
+}
+
+.stats {
+  color: #666;
+  margin-bottom: 2rem;
+  font-size: 0.95rem;
+}
+
+.stats strong {
+  color: #333;
+}
+
+/* Calendar Heatmap Styling */
+.react-calendar-heatmap {
+  margin: 2rem 0;
+}
+
+.react-calendar-heatmap text {
+  font-size: 10px;
+  fill: #aaa;
+}
+
+.react-calendar-heatmap .react-calendar-heatmap-small-text {
+  font-size: 8px;
+}
+
+.react-calendar-heatmap rect:hover {
+  stroke: #555;
+  stroke-width: 2px;
+}
+
+/* Color scale - GitHub style */
+.color-empty {
+  fill: #ebedf0;
+  background: #ebedf0;
+}
+
+.color-scale-1 {
+  fill: #9be9a8;
+  background: #9be9a8;
+}
+
+.color-scale-2 {
+  fill: #40c463;
+  background: #40c463;
+}
+
+.color-scale-3 {
+  fill: #30a14e;
+  background: #30a14e;
+}
+
+.color-scale-4 {
+  fill: #216e39;
+  background: #216e39;
+}
+
+/* Legend */
+.legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.legend-scale {
+  display: flex;
+  gap: 3px;
+}
+
+.legend-scale div {
+  width: 12px;
+  height: 12px;
+  border: 1px solid #d1d5da;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #666;
+  font-size: 1.1rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .app {
+    padding: 1rem;
+  }
+
+  .calendar-container {
+    padding: 1rem;
+    overflow-x: auto;
+  }
+
+  .react-calendar-heatmap {
+    font-size: 0.8rem;
+  }
+}
