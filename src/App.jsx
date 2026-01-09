@@ -90,8 +90,8 @@ function App() {
         return
       }
 
-      // Only include first page entries (where page column is empty)
-      if (row.page && row.page.trim() !== '') {
+      // Only include first page entries (where page column is empty or "0")
+      if (row.page && row.page.trim() !== '' && row.page.trim() !== '0') {
         console.log(`Skipping non-first-page entry: ${row.entry_date} (page: ${row.page})`)
         skippedCount++
         return
