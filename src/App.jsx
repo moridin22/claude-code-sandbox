@@ -13,7 +13,7 @@ function App() {
   const [lastFileName, setLastFileName] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const calendarRef = useRef(null)
-  const [tooltip, setTooltip] = useState({ show: false, content: '', x: 0, y: 0 })
+  const [tooltip, setTooltip] = useState({ show: false, content: '', x: 0, y: 0, flipped: false })
   const [syncStatus, setSyncStatus] = useState('idle') // 'idle', 'loading', 'success', 'error'
   const [binId, setBinId] = useState(null)
   const [customId, setCustomId] = useState(null)
@@ -658,17 +658,25 @@ function App() {
             const content = rect.getAttribute('title')
             if (content) {
               const containerRect = calendarRef.current.getBoundingClientRect()
+              const tooltipWidth = 150 // Estimated tooltip width
+              const cursorX = e.clientX
+              const viewportWidth = window.innerWidth
+
+              // Check if tooltip would overflow right edge of viewport
+              const wouldOverflowRight = cursorX + tooltipWidth + 20 > viewportWidth
+
               setTooltip({
                 show: true,
                 content,
-                x: e.clientX - containerRect.left + 10,
-                y: e.clientY - containerRect.top - 10
+                x: e.clientX - containerRect.left + (wouldOverflowRight ? -10 : 10),
+                y: e.clientY - containerRect.top - 10,
+                flipped: wouldOverflowRight
               })
             }
           }
 
           const handleMouseLeave = () => {
-            setTooltip({ show: false, content: '', x: 0, y: 0 })
+            setTooltip({ show: false, content: '', x: 0, y: 0, flipped: false })
           }
 
           rect.addEventListener('mouseenter', handleMouseEnter)
@@ -912,6 +920,7 @@ function App() {
                   position: 'absolute',
                   left: tooltip.x,
                   top: tooltip.y,
+                  transform: tooltip.flipped ? 'translateX(-100%)' : 'none',
                   background: 'rgba(0, 0, 0, 0.8)',
                   color: 'white',
                   padding: '8px 12px',
