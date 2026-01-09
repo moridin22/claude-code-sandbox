@@ -16,15 +16,20 @@ function App() {
   const [tooltip, setTooltip] = useState({ show: false, content: '', x: 0, y: 0 })
   const [syncStatus, setSyncStatus] = useState('idle') // 'idle', 'loading', 'success', 'error'
   const [binId, setBinId] = useState(null)
+  const [customId, setCustomId] = useState(null)
 
   // Load saved CSV from localStorage and check for cloud sync on mount
   useEffect(() => {
     const savedCSV = localStorage.getItem('streaks-csv-data')
     const savedFileName = localStorage.getItem('streaks-csv-filename')
     const savedBinId = localStorage.getItem('streaks-bin-id')
+    const savedCustomId = localStorage.getItem('streaks-custom-id')
 
     if (savedBinId) {
       setBinId(savedBinId)
+    }
+    if (savedCustomId) {
+      setCustomId(savedCustomId)
     }
 
     // Check URL for data parameter
@@ -107,14 +112,31 @@ function App() {
     reader.readAsText(file)
   }
 
+  // Generate a single memorable word ID
+  const generateCustomId = () => {
+    const words = [
+      'sunshine', 'ocean', 'mountain', 'forest', 'river', 'cloud', 'star', 'moon', 'wind', 'fire',
+      'thunder', 'rainbow', 'crystal', 'diamond', 'pearl', 'gold', 'silver', 'ruby', 'emerald', 'jade',
+      'tiger', 'lion', 'eagle', 'wolf', 'bear', 'fox', 'deer', 'rabbit', 'dolphin', 'whale',
+      'phoenix', 'dragon', 'unicorn', 'falcon', 'panther', 'lynx', 'otter', 'hawk', 'raven', 'swan',
+      'bamboo', 'cherry', 'maple', 'cedar', 'pine', 'oak', 'birch', 'willow', 'rose', 'lotus',
+      'cosmos', 'galaxy', 'nebula', 'planet', 'comet', 'asteroid', 'meteor', 'orbit', 'lunar', 'solar',
+      'puzzle', 'riddle', 'quest', 'journey', 'adventure', 'mystery', 'secret', 'treasure', 'legend', 'myth',
+      'swift', 'brave', 'wise', 'calm', 'bright', 'noble', 'fierce', 'gentle', 'mighty', 'pure'
+    ]
+    return words[Math.floor(Math.random() * words.length)]
+  }
+
   // Clear saved CSV data
   const clearSavedData = () => {
     localStorage.removeItem('streaks-csv-data')
     localStorage.removeItem('streaks-csv-filename')
     localStorage.removeItem('streaks-bin-id')
+    localStorage.removeItem('streaks-custom-id')
     setData([])
     setLastFileName(null)
     setBinId(null)
+    setCustomId(null)
     setError(null)
     setFileInputKey(Date.now())
     console.log('Cleared saved CSV data')
@@ -182,9 +204,18 @@ function App() {
 
     setSyncStatus('loading')
     try {
+      // Generate custom ID if we don't have one
+      let currentCustomId = customId
+      if (!currentCustomId) {
+        currentCustomId = generateCustomId()
+        setCustomId(currentCustomId)
+        localStorage.setItem('streaks-custom-id', currentCustomId)
+      }
+
       const payload = {
         csvData: cleanedCsvData,
         fileName,
+        customId: currentCustomId,
         lastUpdated: new Date().toISOString()
       }
 
@@ -198,7 +229,7 @@ function App() {
       let url, method, headers
       if (binId) {
         // Update existing bin
-        url = `https://api.jsonbin.io/v3/b/${binId}`
+        url = `https://api.jsonbin.io/v3/b/${customId || binId}`
         method = 'PUT'
         headers = {
           'Content-Type': 'application/json',
@@ -211,7 +242,7 @@ function App() {
         headers = {
           'Content-Type': 'application/json',
           'X-Master-Key': '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS',
-          'X-Bin-Name': 'Streaks Calendar Data',
+          'X-Bin-Name': `streaks-${currentCustomId}`,
           'X-Bin-Private': 'false'
         }
       }
@@ -241,7 +272,7 @@ function App() {
       }
 
       setSyncStatus('success')
-      setTimeout(() => setSyncStatus('idle'), 2000)
+      // Don't auto-hide success message
     } catch (err) {
       console.error('Sync error:', err)
       setError('Sync failed: ' + err.message)
@@ -251,16 +282,18 @@ function App() {
   }
 
   // Load data from cloud
-  const loadFromCloud = async (inputBinId = null) => {
-    const targetBinId = inputBinId || binId
-    if (!targetBinId) {
+  const loadFromCloud = async (inputId = null) => {
+    const targetId = inputId || customId || binId
+    if (!targetId) {
       setError('No cloud data ID provided')
       return
     }
 
     setSyncStatus('loading')
+    
     try {
-      const response = await fetch(`https://api.jsonbin.io/v3/b/${targetBinId}/latest`, {
+      // Use the ID directly - it should be either a custom word or actual bin ID
+      const response = await fetch(`https://api.jsonbin.io/v3/b/${targetId}/latest`, {
         headers: {
           'X-Master-Key': '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS'
         }
@@ -271,16 +304,22 @@ function App() {
       }
 
       const result = await response.json()
-      const { csvData, fileName } = result.record
+      const { csvData, fileName, customId: loadedCustomId } = result.record
 
       if (csvData && fileName) {
         // Save to localStorage
         localStorage.setItem('streaks-csv-data', csvData)
         localStorage.setItem('streaks-csv-filename', fileName)
         
-        if (inputBinId && inputBinId !== binId) {
-          setBinId(inputBinId)
-          localStorage.setItem('streaks-bin-id', inputBinId)
+        // Update IDs if loading from external source
+        if (inputId && inputId !== binId) {
+          setBinId(inputId)
+          localStorage.setItem('streaks-bin-id', inputId)
+        }
+        
+        if (loadedCustomId && loadedCustomId !== customId) {
+          setCustomId(loadedCustomId)
+          localStorage.setItem('streaks-custom-id', loadedCustomId)
         }
 
         // Parse and display data
@@ -293,7 +332,7 @@ function App() {
               setLastFileName(fileName)
               setError(null)
               setSyncStatus('success')
-              setTimeout(() => setSyncStatus('idle'), 2000)
+              // Don't auto-hide success message
             } catch (err) {
               setError('Failed to parse loaded data: ' + err.message)
               setSyncStatus('error')
@@ -645,18 +684,18 @@ function App() {
         {syncStatus === 'success' && (
           <div className="sync-status success">
             ✅ Data synced to cloud successfully!
-            {binId && (
+            {customId && (
               <div style={{ fontSize: '0.8rem', marginTop: '0.5rem', color: '#666' }}>
-                <div>Share ID: <code>{binId}</code></div>
+                <div>Share ID: <code>{customId || binId}</code></div>
                 <div style={{ marginTop: '0.5rem' }}>
                   <strong>Shareable Link:</strong>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.3rem' }}>
                     <code style={{ flex: 1, fontSize: '0.75rem', wordBreak: 'break-all' }}>
-                      {window.location.origin}{window.location.pathname}?data={binId}
+                      {window.location.origin}{window.location.pathname}?data={customId || binId}
                     </code>
                     <button
                       onClick={() => {
-                        const shareUrl = `${window.location.origin}${window.location.pathname}?data=${binId}`
+                        const shareUrl = `${window.location.origin}${window.location.pathname}?data=${customId || binId}`
                         navigator.clipboard.writeText(shareUrl)
                         alert('Link copied to clipboard!')
                       }}
