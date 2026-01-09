@@ -27,6 +27,16 @@ function App() {
       setBinId(savedBinId)
     }
 
+    // Check URL for data parameter
+    const urlParams = new URLSearchParams(window.location.search)
+    const urlDataId = urlParams.get('data')
+
+    if (urlDataId) {
+      console.log(`Found data ID in URL: ${urlDataId}`)
+      loadFromCloud(urlDataId)
+      return
+    }
+
     if (savedCSV && savedFileName) {
       try {
         Papa.parse(savedCSV, {
@@ -586,10 +596,15 @@ function App() {
   }
 
   if (isLoading) {
+    const urlParams = new URLSearchParams(window.location.search)
+    const urlDataId = urlParams.get('data')
+    
     return (
       <div className="app">
         <h1>📅 Streak Calendar Visualization</h1>
-        <div className="loading">Loading saved data...</div>
+        <div className="loading">
+          {urlDataId ? 'Loading shared data from cloud...' : 'Loading saved data...'}
+        </div>
       </div>
     )
   }
@@ -632,7 +647,33 @@ function App() {
             ✅ Data synced to cloud successfully!
             {binId && (
               <div style={{ fontSize: '0.8rem', marginTop: '0.5rem', color: '#666' }}>
-                Share ID: <code>{binId}</code>
+                <div>Share ID: <code>{binId}</code></div>
+                <div style={{ marginTop: '0.5rem' }}>
+                  <strong>Shareable Link:</strong>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.3rem' }}>
+                    <code style={{ flex: 1, fontSize: '0.75rem', wordBreak: 'break-all' }}>
+                      {window.location.origin}{window.location.pathname}?data={binId}
+                    </code>
+                    <button
+                      onClick={() => {
+                        const shareUrl = `${window.location.origin}${window.location.pathname}?data=${binId}`
+                        navigator.clipboard.writeText(shareUrl)
+                        alert('Link copied to clipboard!')
+                      }}
+                      style={{
+                        padding: '0.3rem 0.6rem',
+                        fontSize: '0.7rem',
+                        background: '#4CAF50',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '3px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      📋 Copy
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
