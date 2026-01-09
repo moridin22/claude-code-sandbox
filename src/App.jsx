@@ -77,16 +77,25 @@ function App() {
   // Parse streaks app CSV format
   const parseStreaksAppCSV = (csvData) => {
     const dateCounts = {}
+    let parsedCount = 0
+    let skippedCount = 0
 
     csvData.forEach((row, index) => {
       // Skip empty rows
       if (!row || !row.entry_date || !row.entry_type) return
 
       // Only count completed tasks (ignore missed)
-      if (!row.entry_type.toLowerCase().includes('completed')) return
+      if (!row.entry_type.toLowerCase().includes('completed')) {
+        skippedCount++
+        return
+      }
 
       // Only include first page entries (where page column is empty)
-      if (row.page && row.page.trim() !== '') return
+      if (row.page && row.page.trim() !== '') {
+        console.log(`Skipping non-first-page entry: ${row.entry_date} (page: ${row.page})`)
+        skippedCount++
+        return
+      }
 
       const rawDate = row.entry_date.trim()
 
@@ -99,6 +108,7 @@ function App() {
           const month = rawDate.substring(4, 6)
           const day = rawDate.substring(6, 8)
           dateStr = `${year}-${month}-${day}`
+          parsedCount++
         } else {
           throw new Error('Invalid date format')
         }
@@ -110,8 +120,11 @@ function App() {
         dateCounts[dateStr]++
       } catch (err) {
         console.warn(`Skipping row ${index + 1}: Invalid date format "${rawDate}"`)
+        skippedCount++
       }
     })
+
+    console.log(`Parsed ${parsedCount} entries, skipped ${skippedCount} entries`)
 
     // Convert to array format
     const parsed = Object.entries(dateCounts).map(([date, count]) => ({
@@ -244,6 +257,12 @@ function App() {
           <p className="stats">
             Total days tracked: <strong>{data.length}</strong> |
             Total completions: <strong>{data.reduce((sum, d) => sum + d.count, 0)}</strong>
+          </p>
+          <p className="stats" style={{ fontSize: '0.85rem', color: '#666' }}>
+            Date range: <strong>{format(startDate, 'MMM d, yyyy')}</strong> to <strong>{format(endDate, 'MMM d, yyyy')}</strong>
+            {data.length > 0 && (
+              <span> | First entry: <strong>{data.sort((a, b) => new Date(a.date) - new Date(b.date))[0].date}</strong> | Last entry: <strong>{data.sort((a, b) => new Date(b.date) - new Date(a.date))[0].date}</strong></span>
+            )}
           </p>
 
           <CalendarHeatmap
