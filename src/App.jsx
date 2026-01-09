@@ -132,7 +132,7 @@ function App() {
 
   // Parse streaks app CSV format
   const parseStreaksAppCSV = (csvData) => {
-    const dateCounts = {} // { date: { completed: 0, total: 0 } }
+    const dateCounts = {} // { date: { dailyCompleted: 0, dailyTotal: 0, weeklyCompleted: 0, weeklyTotal: 0 } }
     let parsedDailyCount = 0
     let parsedWeeklyCount = 0
     let skippedCount = 0
@@ -175,11 +175,11 @@ function App() {
       // Handle daily tasks (page 0 or empty)
       if (pageValue === '' || pageValue === '0') {
         if (!dateCounts[dateStr]) {
-          dateCounts[dateStr] = { completed: 0, total: 0 }
+          dateCounts[dateStr] = { dailyCompleted: 0, dailyTotal: 0, weeklyCompleted: 0, weeklyTotal: 0 }
         }
-        dateCounts[dateStr].total++
+        dateCounts[dateStr].dailyTotal++
         if (isCompleted) {
-          dateCounts[dateStr].completed++
+          dateCounts[dateStr].dailyCompleted++
         }
         parsedDailyCount++
       }
@@ -190,13 +190,13 @@ function App() {
 
         weekDays.forEach(day => {
           if (!dateCounts[day]) {
-            dateCounts[day] = { completed: 0, total: 0 }
+            dateCounts[day] = { dailyCompleted: 0, dailyTotal: 0, weeklyCompleted: 0, weeklyTotal: 0 }
           }
           // Weekly tasks add 1/3 to each day (not 1/6)
           // This gives weekly tasks more weight in the completion percentage
-          dateCounts[day].total += 1/3
+          dateCounts[day].weeklyTotal += 1/3
           if (isCompleted) {
-            dateCounts[day].completed += 1/3
+            dateCounts[day].weeklyCompleted += 1/3
           }
         })
 
@@ -214,12 +214,18 @@ function App() {
 
     // Convert to array format with percentage as count
     const parsed = Object.entries(dateCounts).map(([date, counts]) => {
-      const percentage = counts.total > 0 ? (counts.completed / counts.total) : 0
+      const totalCompleted = counts.dailyCompleted + counts.weeklyCompleted
+      const totalTasks = counts.dailyTotal + counts.weeklyTotal
+      const percentage = totalTasks > 0 ? (totalCompleted / totalTasks) : 0
       return {
         date,
         count: percentage, // 0 to 1 representing 0% to 100%
-        completed: counts.completed,
-        total: counts.total
+        completed: totalCompleted,
+        total: totalTasks,
+        dailyCompleted: counts.dailyCompleted,
+        dailyTotal: counts.dailyTotal,
+        weeklyCompleted: counts.weeklyCompleted,
+        weeklyTotal: counts.weeklyTotal
       }
     })
 
@@ -304,12 +310,30 @@ function App() {
     if (!value || !value.date) {
       return null
     }
-    // Show completion percentage and counts
+
+    // Build tooltip with breakdown
     const percentage = Math.round(value.count * 100)
-    const completedStr = value.completed % 1 === 0 ? value.completed.toString() : value.completed.toFixed(2)
-    const totalStr = value.total % 1 === 0 ? value.total.toString() : value.total.toFixed(2)
+    let tooltip = `${value.date}: ${percentage}%\n`
+
+    // Add daily tasks breakdown if present
+    if (value.dailyTotal > 0) {
+      const dailyCompletedStr = value.dailyCompleted % 1 === 0 ? value.dailyCompleted.toString() : value.dailyCompleted.toFixed(1)
+      const dailyTotalStr = value.dailyTotal % 1 === 0 ? value.dailyTotal.toString() : value.dailyTotal.toFixed(1)
+      tooltip += `Daily: ${dailyCompletedStr}/${dailyTotalStr}`
+    }
+
+    // Add weekly tasks breakdown if present
+    if (value.weeklyTotal > 0) {
+      const weeklyCompletedStr = value.weeklyCompleted % 1 === 0 ? value.weeklyCompleted.toString() : value.weeklyCompleted.toFixed(2)
+      const weeklyTotalStr = value.weeklyTotal % 1 === 0 ? value.weeklyTotal.toString() : value.weeklyTotal.toFixed(2)
+      if (value.dailyTotal > 0) {
+        tooltip += `, `
+      }
+      tooltip += `Weekly: ${weeklyCompletedStr}/${weeklyTotalStr}`
+    }
+
     return {
-      'data-tip': `${value.date}: ${percentage}% (${completedStr}/${totalStr} tasks)`
+      'data-tip': tooltip
     }
   }
 
