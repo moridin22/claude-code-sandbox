@@ -56,6 +56,75 @@ function App() {
 
   // Parse CSV data - supports multiple formats
   const parseCSVData = (csvData) => {
+    // Check if this is a streaks app export (has entry_date and entry_type columns)
+    const firstRow = csvData.find(row => row && Object.keys(row).length > 0)
+    if (!firstRow) {
+      throw new Error('CSV file is empty')
+    }
+
+    const isStreaksAppFormat = firstRow.hasOwnProperty('entry_date') && firstRow.hasOwnProperty('entry_type')
+
+    if (isStreaksAppFormat) {
+      return parseStreaksAppCSV(csvData)
+    } else {
+      return parseGenericCSV(csvData)
+    }
+  }
+
+  // Parse streaks app CSV format
+  const parseStreaksAppCSV = (csvData) => {
+    const dateCounts = {}
+
+    csvData.forEach((row, index) => {
+      // Skip empty rows
+      if (!row || !row.entry_date || !row.entry_type) return
+
+      // Only count completed tasks (ignore missed)
+      if (!row.entry_type.toLowerCase().includes('completed')) return
+
+      // Only include first page entries (where page column is empty)
+      if (row.page && row.page.trim() !== '') return
+
+      const rawDate = row.entry_date.trim()
+
+      // Convert YYYYMMDD to YYYY-MM-DD
+      try {
+        let dateStr
+        if (rawDate.length === 8 && /^\d{8}$/.test(rawDate)) {
+          // Format: YYYYMMDD
+          const year = rawDate.substring(0, 4)
+          const month = rawDate.substring(4, 6)
+          const day = rawDate.substring(6, 8)
+          dateStr = `${year}-${month}-${day}`
+        } else {
+          throw new Error('Invalid date format')
+        }
+
+        // Count completions per day
+        if (!dateCounts[dateStr]) {
+          dateCounts[dateStr] = 0
+        }
+        dateCounts[dateStr]++
+      } catch (err) {
+        console.warn(`Skipping row ${index + 1}: Invalid date format "${rawDate}"`)
+      }
+    })
+
+    // Convert to array format
+    const parsed = Object.entries(dateCounts).map(([date, count]) => ({
+      date,
+      count
+    }))
+
+    if (parsed.length === 0) {
+      throw new Error('No completed tasks found in CSV')
+    }
+
+    return parsed
+  }
+
+  // Parse generic CSV formats
+  const parseGenericCSV = (csvData) => {
     const parsed = []
 
     csvData.forEach((row, index) => {
@@ -136,9 +205,14 @@ function App() {
         {error && <div className="error">{error}</div>}
 
         <div className="info">
-          <p><strong>CSV Format:</strong> Your file should have columns like:</p>
-          <code>date,count</code> or <code>day,value</code>
-          <p>Example: <code>2024-01-15,3</code> (completed 3 tasks on Jan 15)</p>
+          <p><strong>Supported CSV Formats:</strong></p>
+          <ul style={{ textAlign: 'left', margin: '0.5rem 0' }}>
+            <li><strong>Streaks apps:</strong> Automatically detects exports with <code>entry_date</code> and <code>entry_type</code> columns</li>
+            <li><strong>Generic:</strong> <code>date,count</code> or <code>day,value</code> format</li>
+          </ul>
+          <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
+            The app counts only completed tasks and groups by date.
+          </p>
         </div>
       </div>
 
