@@ -74,10 +74,30 @@ function App() {
     }
   }
 
+  // Helper: Get Sunday of the week containing a date
+  const getSundayOfWeek = (date) => {
+    const d = new Date(date)
+    const day = d.getDay() // 0 = Sunday, 1 = Monday, etc.
+    const diff = day // Days since Sunday
+    return subDays(d, diff)
+  }
+
+  // Helper: Get all days from Sunday to Friday of a week
+  const getWeekDays = (sundayDate) => {
+    const days = []
+    for (let i = 0; i <= 5; i++) { // Sunday (0) through Friday (5)
+      const date = new Date(sundayDate)
+      date.setDate(date.getDate() + i)
+      days.push(format(date, 'yyyy-MM-dd'))
+    }
+    return days
+  }
+
   // Parse streaks app CSV format
   const parseStreaksAppCSV = (csvData) => {
     const dateCounts = {}
-    let parsedCount = 0
+    let parsedDailyCount = 0
+    let parsedWeeklyCount = 0
     let skippedCount = 0
 
     csvData.forEach((row, index) => {
@@ -90,41 +110,58 @@ function App() {
         return
       }
 
-      // Only include first page entries (where page column is empty or "0")
-      if (row.page && row.page.trim() !== '' && row.page.trim() !== '0') {
-        console.log(`Skipping non-first-page entry: ${row.entry_date} (page: ${row.page})`)
-        skippedCount++
-        return
-      }
-
+      const pageValue = row.page ? row.page.trim() : ''
       const rawDate = row.entry_date.trim()
 
       // Convert YYYYMMDD to YYYY-MM-DD
+      let dateStr
       try {
-        let dateStr
         if (rawDate.length === 8 && /^\d{8}$/.test(rawDate)) {
           // Format: YYYYMMDD
           const year = rawDate.substring(0, 4)
           const month = rawDate.substring(4, 6)
           const day = rawDate.substring(6, 8)
           dateStr = `${year}-${month}-${day}`
-          parsedCount++
         } else {
           throw new Error('Invalid date format')
         }
+      } catch (err) {
+        console.warn(`Skipping row ${index + 1}: Invalid date format "${rawDate}"`)
+        skippedCount++
+        return
+      }
 
-        // Count completions per day
+      // Handle daily tasks (page 0 or empty)
+      if (pageValue === '' || pageValue === '0') {
         if (!dateCounts[dateStr]) {
           dateCounts[dateStr] = 0
         }
         dateCounts[dateStr]++
-      } catch (err) {
-        console.warn(`Skipping row ${index + 1}: Invalid date format "${rawDate}"`)
+        parsedDailyCount++
+      }
+      // Handle weekly tasks (page 1)
+      else if (pageValue === '1') {
+        const sunday = getSundayOfWeek(dateStr)
+        const weekDays = getWeekDays(sunday)
+
+        weekDays.forEach(day => {
+          if (!dateCounts[day]) {
+            dateCounts[day] = 0
+          }
+          dateCounts[day] += 1/3 // Add 1/3 completion to each day of the week
+        })
+
+        parsedWeeklyCount++
+        console.log(`Added weekly task for week of ${format(sunday, 'MMM d, yyyy')} (${weekDays.length} days)`)
+      }
+      // Skip other pages
+      else {
+        console.log(`Skipping non-first/weekly-page entry: ${row.entry_date} (page: ${row.page})`)
         skippedCount++
       }
     })
 
-    console.log(`Parsed ${parsedCount} entries, skipped ${skippedCount} entries`)
+    console.log(`Parsed ${parsedDailyCount} daily entries, ${parsedWeeklyCount} weekly entries, skipped ${skippedCount} entries`)
 
     // Convert to array format
     const parsed = Object.entries(dateCounts).map(([date, count]) => ({
@@ -210,8 +247,11 @@ function App() {
     if (!value || !value.date) {
       return null
     }
+    // Format count to show decimals if fractional, otherwise whole number
+    const countStr = value.count % 1 === 0 ? value.count.toString() : value.count.toFixed(2)
+    const taskLabel = value.count === 1 ? 'task' : 'tasks'
     return {
-      'data-tip': `${value.date}: ${value.count} task${value.count !== 1 ? 's' : ''} completed`
+      'data-tip': `${value.date}: ${countStr} ${taskLabel} completed`
     }
   }
 
@@ -243,10 +283,12 @@ function App() {
           <p><strong>Supported CSV Formats:</strong></p>
           <ul style={{ textAlign: 'left', margin: '0.5rem 0' }}>
             <li><strong>Streaks apps:</strong> Automatically detects exports with <code>entry_date</code> and <code>entry_type</code> columns</li>
-            <li><strong>Generic:</strong> <code>date,count</code> or <code>day,value</code> format</li>
+            <li style={{ marginTop: '0.3rem' }}><strong>Daily tasks (page 0):</strong> Each completion counts as 1</li>
+            <li style={{ marginTop: '0.3rem' }}><strong>Weekly tasks (page 1):</strong> Each completion adds 1/3 to every day from Sunday to Friday of that week</li>
+            <li style={{ marginTop: '0.3rem' }}><strong>Generic:</strong> <code>date,count</code> or <code>day,value</code> format</li>
           </ul>
           <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
-            The app counts only completed tasks and groups by date.
+            Only completed tasks are counted. Missed tasks are ignored.
           </p>
         </div>
       </div>
@@ -273,9 +315,10 @@ function App() {
               if (!value || value.count === 0) {
                 return 'color-empty'
               }
-              if (value.count === 1) return 'color-scale-1'
-              if (value.count === 2) return 'color-scale-2'
-              if (value.count <= 4) return 'color-scale-3'
+              // Support fractional counts from weekly tasks
+              if (value.count < 1) return 'color-scale-1'
+              if (value.count < 2) return 'color-scale-2'
+              if (value.count < 4) return 'color-scale-3'
               return 'color-scale-4'
             }}
             tooltipDataAttrs={getTooltipDataAttrs}
