@@ -15,79 +15,94 @@ function App() {
   const calendarRef = useRef(null)
   const [tooltip, setTooltip] = useState({ show: false, content: '', x: 0, y: 0 })
   const [syncStatus, setSyncStatus] = useState('idle') // 'idle', 'loading', 'success', 'error'
-  const [binId, setBinId] = useState(null)
-  const [customId, setCustomId] = useState(null)
-  const [registryBinId, setRegistryBinId] = useState(null)
 
-  // JSONBin API key
+  // Fixed bin ID for cloud storage
+  const CLOUD_BIN_ID = '69610898ae596e708fd03729'
   const JSONBIN_API_KEY = '$2a$10$toQ/X6WsmY6l38zcuRG.1e2IaEtmWoS4Dy/8J7e8Ivns2.pulx2eS'
 
-  // Load saved CSV from localStorage and check for cloud sync on mount
+  // Load data from cloud on mount
   useEffect(() => {
-    const savedCSV = localStorage.getItem('streaks-csv-data')
-    const savedFileName = localStorage.getItem('streaks-csv-filename')
-    const savedBinId = localStorage.getItem('streaks-bin-id')
-    const savedCustomId = localStorage.getItem('streaks-custom-id')
-    const savedRegistryBinId = localStorage.getItem('streaks-registry-bin-id')
+    loadFromCloud()
+  }, [])
 
-    if (savedBinId) {
-      setBinId(savedBinId)
-    }
-    if (savedCustomId) {
-      setCustomId(savedCustomId)
-    }
-    if (savedRegistryBinId) {
-      setRegistryBinId(savedRegistryBinId)
-    }
+  // Load data from cloud
+  const loadFromCloud = async () => {
+    setIsLoading(true)
+    setSyncStatus('loading')
 
-    // Check URL for data parameter
-    const urlParams = new URLSearchParams(window.location.search)
-    const urlDataId = urlParams.get('data')
-    const urlRegistryId = urlParams.get('reg')
+    try {
+      console.log('Loading data from cloud...')
+      const response = await fetch(`https://api.jsonbin.io/v3/b/${CLOUD_BIN_ID}/latest`, {
+        headers: { 'X-Master-Key': JSONBIN_API_KEY }
+      })
 
-    // If URL contains registry ID, save it for lookups
-    if (urlRegistryId && !savedRegistryBinId) {
-      console.log(`Found registry ID in URL: ${urlRegistryId}`)
-      setRegistryBinId(urlRegistryId)
-      localStorage.setItem('streaks-registry-bin-id', urlRegistryId)
-    }
+      if (!response.ok) {
+        throw new Error(`Load failed: ${response.statusText}`)
+      }
 
-    if (urlDataId) {
-      console.log(`Found data ID in URL: ${urlDataId}`)
-      // Pass the registry ID from URL if available
-      loadFromCloud(urlDataId, urlRegistryId || savedRegistryBinId)
-      return
-    }
+      const result = await response.json()
+      const { csvData, fileName } = result.record
 
-    if (savedCSV && savedFileName) {
-      try {
-        Papa.parse(savedCSV, {
+      if (csvData && fileName) {
+        // Save to localStorage
+        localStorage.setItem('streaks-csv-data', csvData)
+        localStorage.setItem('streaks-csv-filename', fileName)
+
+        // Parse and display data
+        Papa.parse(csvData, {
           header: true,
           complete: (results) => {
             try {
               const parsedData = parseCSVData(results.data)
               setData(parsedData)
-              setLastFileName(savedFileName)
+              setLastFileName(fileName)
               setError(null)
-              console.log(`Auto-loaded saved CSV: ${savedFileName}`)
+              setSyncStatus('idle')
+              console.log(`Loaded from cloud: ${fileName}`)
             } catch (err) {
-              setError('Failed to load saved CSV: ' + err.message)
+              setError('Failed to parse loaded data: ' + err.message)
+              setSyncStatus('error')
             }
-            setIsLoading(false)
-          },
-          error: (err) => {
-            setError('Failed to parse saved CSV: ' + err.message)
             setIsLoading(false)
           }
         })
-      } catch (err) {
-        console.error('Failed to load saved CSV:', err)
-        setIsLoading(false)
+      } else {
+        // No data in cloud, try localStorage
+        loadFromLocalStorage()
       }
+    } catch (err) {
+      console.log('Cloud load failed, trying localStorage:', err.message)
+      loadFromLocalStorage()
+    }
+  }
+
+  // Fallback to localStorage
+  const loadFromLocalStorage = () => {
+    const savedCSV = localStorage.getItem('streaks-csv-data')
+    const savedFileName = localStorage.getItem('streaks-csv-filename')
+
+    if (savedCSV && savedFileName) {
+      Papa.parse(savedCSV, {
+        header: true,
+        complete: (results) => {
+          try {
+            const parsedData = parseCSVData(results.data)
+            setData(parsedData)
+            setLastFileName(savedFileName)
+            setError(null)
+            console.log(`Loaded from localStorage: ${savedFileName}`)
+          } catch (err) {
+            setError('Failed to load saved data: ' + err.message)
+          }
+          setIsLoading(false)
+          setSyncStatus('idle')
+        }
+      })
     } else {
       setIsLoading(false)
+      setSyncStatus('idle')
     }
-  }, [])
+  }
 
   // Handle CSV file upload
   const handleFileUpload = (event) => {
@@ -112,11 +127,6 @@ function App() {
             localStorage.setItem('streaks-csv-data', csvContent)
             localStorage.setItem('streaks-csv-filename', file.name)
             console.log(`Saved CSV to localStorage: ${file.name}`)
-            
-            // Auto-sync to cloud if we have existing bin ID
-            if (binId) {
-              setTimeout(() => syncToCloud(), 1000)
-            }
           } catch (err) {
             setError(err.message)
           }
@@ -129,31 +139,12 @@ function App() {
     reader.readAsText(file)
   }
 
-  // Generate a single memorable word ID
-  const generateCustomId = () => {
-    const words = [
-      'sunshine', 'ocean', 'mountain', 'forest', 'river', 'cloud', 'star', 'moon', 'wind', 'fire',
-      'thunder', 'rainbow', 'crystal', 'diamond', 'pearl', 'gold', 'silver', 'ruby', 'emerald', 'jade',
-      'tiger', 'lion', 'eagle', 'wolf', 'bear', 'fox', 'deer', 'rabbit', 'dolphin', 'whale',
-      'phoenix', 'dragon', 'unicorn', 'falcon', 'panther', 'lynx', 'otter', 'hawk', 'raven', 'swan',
-      'bamboo', 'cherry', 'maple', 'cedar', 'pine', 'oak', 'birch', 'willow', 'rose', 'lotus',
-      'cosmos', 'galaxy', 'nebula', 'planet', 'comet', 'asteroid', 'meteor', 'orbit', 'lunar', 'solar',
-      'puzzle', 'riddle', 'quest', 'journey', 'adventure', 'mystery', 'secret', 'treasure', 'legend', 'myth',
-      'swift', 'brave', 'wise', 'calm', 'bright', 'noble', 'fierce', 'gentle', 'mighty', 'pure'
-    ]
-    return words[Math.floor(Math.random() * words.length)]
-  }
-
   // Clear saved CSV data
   const clearSavedData = () => {
     localStorage.removeItem('streaks-csv-data')
     localStorage.removeItem('streaks-csv-filename')
-    localStorage.removeItem('streaks-bin-id')
-    localStorage.removeItem('streaks-custom-id')
     setData([])
     setLastFileName(null)
-    setBinId(null)
-    setCustomId(null)
     setError(null)
     setFileInputKey(Date.now())
     console.log('Cleared saved CSV data')
@@ -206,11 +197,11 @@ function App() {
     return cleanedCsv
   }
 
-  // Sync data to cloud
+  // Sync data to cloud (overwrites the fixed bin)
   const syncToCloud = async () => {
     const csvData = localStorage.getItem('streaks-csv-data')
     const fileName = localStorage.getItem('streaks-csv-filename')
-    
+
     if (!csvData || !fileName) {
       setError('No data to sync')
       return
@@ -221,328 +212,39 @@ function App() {
 
     setSyncStatus('loading')
     try {
-      // Generate custom ID if we don't have one
-      let currentCustomId = customId
-      if (!currentCustomId) {
-        currentCustomId = generateCustomId()
-        setCustomId(currentCustomId)
-        localStorage.setItem('streaks-custom-id', currentCustomId)
-      }
-
-      // Get or create the registry bin for word mappings
-      const currentRegistryBinId = await getOrCreateRegistry()
-
       const payload = {
         csvData: cleanedCsvData,
         fileName,
-        customId: currentCustomId,
-        registryBinId: currentRegistryBinId, // Include registry ID so others can discover it
         lastUpdated: new Date().toISOString()
       }
 
-      console.log('Syncing payload:', {
+      console.log('Syncing to cloud:', {
         payloadSize: JSON.stringify(payload).length,
         fileName,
         originalCsvLength: csvData.length,
-        cleanedCsvLength: cleanedCsvData.length,
-        registryBinId: currentRegistryBinId
+        cleanedCsvLength: cleanedCsvData.length
       })
 
-      let url, method, headers
-      if (binId) {
-        // Update existing bin - always use the actual bin ID, not the custom word
-        url = `https://api.jsonbin.io/v3/b/${binId}`
-        method = 'PUT'
-        headers = {
-          'Content-Type': 'application/json',
-          'X-Master-Key': JSONBIN_API_KEY
-        }
-      } else {
-        // Create new bin
-        url = 'https://api.jsonbin.io/v3/b'
-        method = 'POST'
-        headers = {
-          'Content-Type': 'application/json',
-          'X-Master-Key': JSONBIN_API_KEY,
-          'X-Bin-Name': `streaks-${currentCustomId}`,
-          'X-Bin-Private': 'false'
-        }
-      }
-
-      console.log('Making request to:', url, 'with method:', method)
-      
-      const response = await fetch(url, {
-        method,
-        headers,
-        body: JSON.stringify(payload)
-      })
-
-      console.log('Response status:', response.status)
-      
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('Error response:', errorText)
-        throw new Error(`Sync failed: ${response.status} ${response.statusText} - ${errorText}`)
-      }
-
-      const result = await response.json()
-      const newBinId = result.metadata?.id || binId
-      
-      if (newBinId && newBinId !== binId) {
-        setBinId(newBinId)
-        localStorage.setItem('streaks-bin-id', newBinId)
-      }
-      
-      console.log(`Data synced! Bin ID: ${newBinId}, Custom ID: ${currentCustomId}`)
-      
-      // Register the custom word in the registry
-      if (currentCustomId && newBinId) {
-        await registerCustomWord(currentCustomId, newBinId)
-      }
-
-      setSyncStatus('success')
-      // Don't auto-hide success message
-    } catch (err) {
-      console.error('Sync error:', err)
-      setError('Sync failed: ' + err.message)
-      setSyncStatus('error')
-      setTimeout(() => setSyncStatus('idle'), 3000)
-    }
-  }
-
-  // Get or create the registry bin for word -> bin ID mappings
-  const getOrCreateRegistry = async () => {
-    // First check localStorage for existing registry bin ID
-    let currentRegistryBinId = registryBinId || localStorage.getItem('streaks-registry-bin-id')
-
-    if (currentRegistryBinId) {
-      // Verify the registry bin still exists
-      try {
-        const response = await fetch(`https://api.jsonbin.io/v3/b/${currentRegistryBinId}/latest`, {
-          headers: { 'X-Master-Key': JSONBIN_API_KEY }
-        })
-        if (response.ok) {
-          console.log('Using existing registry bin:', currentRegistryBinId)
-          return currentRegistryBinId
-        }
-      } catch {
-        console.log('Existing registry bin not accessible, will create new one')
-      }
-    }
-
-    // Create a new registry bin
-    console.log('Creating new registry bin...')
-    try {
-      const response = await fetch('https://api.jsonbin.io/v3/b', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Master-Key': JSONBIN_API_KEY,
-          'X-Bin-Name': 'streaks-word-registry',
-          'X-Bin-Private': 'false'
-        },
-        body: JSON.stringify({ _meta: { created: new Date().toISOString() } })
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        const newRegistryId = result.metadata.id
-        console.log('Created new registry bin:', newRegistryId)
-
-        // Save to state and localStorage
-        setRegistryBinId(newRegistryId)
-        localStorage.setItem('streaks-registry-bin-id', newRegistryId)
-
-        return newRegistryId
-      }
-    } catch (err) {
-      console.error('Failed to create registry bin:', err)
-    }
-
-    return null
-  }
-
-  // Look up actual bin ID from custom word using a specific registry
-  const lookupBinIdWithRegistry = async (customWord, specificRegistryBinId) => {
-    if (!specificRegistryBinId) {
-      console.log('No registry bin ID provided for lookup')
-      return null
-    }
-
-    try {
-      console.log(`Looking up "${customWord}" in registry ${specificRegistryBinId}`)
-      const response = await fetch(`https://api.jsonbin.io/v3/b/${specificRegistryBinId}/latest`, {
-        headers: { 'X-Master-Key': JSONBIN_API_KEY }
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        const registry = result.record || {}
-        const foundBinId = registry[customWord]
-
-        if (foundBinId) {
-          console.log(`Found bin ID for "${customWord}": ${foundBinId}`)
-          return foundBinId
-        } else {
-          console.log(`Custom word "${customWord}" not found in registry. Available words:`, Object.keys(registry))
-        }
-      } else {
-        console.log('Registry fetch failed:', response.status, response.statusText)
-      }
-    } catch (err) {
-      console.error('Registry lookup error:', err)
-    }
-    return null
-  }
-
-  // Register a custom word -> bin ID mapping
-  const registerCustomWord = async (customWord, dataBinId) => {
-    try {
-      // Get or create registry bin
-      const currentRegistryBinId = await getOrCreateRegistry()
-      if (!currentRegistryBinId) {
-        console.error('Cannot register word: no registry bin available')
-        return false
-      }
-
-      // Get existing registry
-      let registry = {}
-      try {
-        const response = await fetch(`https://api.jsonbin.io/v3/b/${currentRegistryBinId}/latest`, {
-          headers: { 'X-Master-Key': JSONBIN_API_KEY }
-        })
-        if (response.ok) {
-          const result = await response.json()
-          registry = result.record || {}
-        }
-      } catch {
-        console.log('Starting with empty registry')
-      }
-
-      // Add new mapping
-      registry[customWord] = dataBinId
-
-      // Update registry
-      const updateResponse = await fetch(`https://api.jsonbin.io/v3/b/${currentRegistryBinId}`, {
+      const response = await fetch(`https://api.jsonbin.io/v3/b/${CLOUD_BIN_ID}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'X-Master-Key': JSONBIN_API_KEY
         },
-        body: JSON.stringify(registry)
-      })
-
-      if (updateResponse.ok) {
-        console.log(`Registered "${customWord}" -> ${dataBinId} in registry ${currentRegistryBinId}`)
-        return true
-      } else {
-        console.error('Failed to update registry:', updateResponse.status, updateResponse.statusText)
-        return false
-      }
-    } catch (err) {
-      console.error('Failed to register custom word:', err)
-      return false
-    }
-  }
-
-  // Load data from cloud
-  const loadFromCloud = async (inputId = null, urlRegistryBinId = null) => {
-    const targetId = inputId || customId || binId
-    if (!targetId) {
-      setError('No cloud data ID provided')
-      return
-    }
-
-    setSyncStatus('loading')
-
-    try {
-      let actualBinId = targetId
-
-      // If it looks like a custom word, look it up in the registry
-      if (inputId && inputId.length < 30 && /^[a-zA-Z]+$/.test(inputId)) {
-        console.log(`Looking up custom word: ${inputId}`)
-
-        // Use registry from URL, state, or localStorage
-        const effectiveRegistryId = urlRegistryBinId || registryBinId || localStorage.getItem('streaks-registry-bin-id')
-
-        if (!effectiveRegistryId) {
-          throw new Error(`Cannot look up custom word "${inputId}": no registry available. Make sure the share URL includes the registry parameter.`)
-        }
-
-        // Temporarily set registry bin ID for lookup
-        if (urlRegistryBinId && !registryBinId) {
-          setRegistryBinId(urlRegistryBinId)
-          localStorage.setItem('streaks-registry-bin-id', urlRegistryBinId)
-        }
-
-        const lookedUpBinId = await lookupBinIdWithRegistry(inputId, effectiveRegistryId)
-        if (lookedUpBinId) {
-          actualBinId = lookedUpBinId
-          console.log(`Found bin ID for "${inputId}": ${actualBinId}`)
-        } else {
-          throw new Error(`Custom word "${inputId}" not found in registry`)
-        }
-      }
-      
-      const response = await fetch(`https://api.jsonbin.io/v3/b/${actualBinId}/latest`, {
-        headers: {
-          'X-Master-Key': JSONBIN_API_KEY
-        }
+        body: JSON.stringify(payload)
       })
 
       if (!response.ok) {
-        throw new Error(`Load failed: ${response.statusText}`)
+        const errorText = await response.text()
+        console.error('Error response:', errorText)
+        throw new Error(`Sync failed: ${response.status} ${response.statusText}`)
       }
 
-      const result = await response.json()
-      const { csvData, fileName, customId: loadedCustomId, registryBinId: loadedRegistryBinId } = result.record
-
-      if (csvData && fileName) {
-        // Save to localStorage
-        localStorage.setItem('streaks-csv-data', csvData)
-        localStorage.setItem('streaks-csv-filename', fileName)
-
-        // Update bin ID to the actual bin ID (not the custom word)
-        if (actualBinId && actualBinId !== binId) {
-          setBinId(actualBinId)
-          localStorage.setItem('streaks-bin-id', actualBinId)
-        }
-
-        // If the loaded data has a registry bin ID, save it for future lookups
-        if (loadedRegistryBinId && !registryBinId) {
-          setRegistryBinId(loadedRegistryBinId)
-          localStorage.setItem('streaks-registry-bin-id', loadedRegistryBinId)
-        }
-        
-        if (loadedCustomId && loadedCustomId !== customId) {
-          setCustomId(loadedCustomId)
-          localStorage.setItem('streaks-custom-id', loadedCustomId)
-        }
-
-        // Parse and display data
-        Papa.parse(csvData, {
-          header: true,
-          complete: (results) => {
-            try {
-              const parsedData = parseCSVData(results.data)
-              setData(parsedData)
-              setLastFileName(fileName)
-              setError(null)
-              setSyncStatus('success')
-              // Don't auto-hide success message
-            } catch (err) {
-              setError('Failed to parse loaded data: ' + err.message)
-              setSyncStatus('error')
-              setTimeout(() => setSyncStatus('idle'), 3000)
-            }
-          }
-        })
-      } else {
-        throw new Error('Invalid data format in cloud storage')
-      }
+      console.log('Data synced to cloud!')
+      setSyncStatus('success')
     } catch (err) {
-      console.error('Load error:', err)
-      setError('Load failed: ' + err.message)
+      console.error('Sync error:', err)
+      setError('Sync failed: ' + err.message)
       setSyncStatus('error')
       setTimeout(() => setSyncStatus('idle'), 3000)
     }
@@ -881,37 +583,6 @@ function App() {
         {syncStatus === 'success' && (
           <div className="sync-status success">
             ✅ Data synced to cloud successfully!
-            {customId && (
-              <div style={{ fontSize: '0.8rem', marginTop: '0.5rem', color: '#666' }}>
-                <div>Share ID: <code>{customId || binId}</code></div>
-                <div style={{ marginTop: '0.5rem' }}>
-                  <strong>Shareable Link:</strong>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.3rem' }}>
-                    <code style={{ flex: 1, fontSize: '0.75rem', wordBreak: 'break-all' }}>
-                      {window.location.origin}{window.location.pathname}?data={customId || binId}{registryBinId ? `&reg=${registryBinId}` : ''}
-                    </code>
-                    <button
-                      onClick={() => {
-                        const shareUrl = `${window.location.origin}${window.location.pathname}?data=${customId || binId}${registryBinId ? `&reg=${registryBinId}` : ''}`
-                        navigator.clipboard.writeText(shareUrl)
-                        alert('Link copied to clipboard!')
-                      }}
-                      style={{
-                        padding: '0.3rem 0.6rem',
-                        fontSize: '0.7rem',
-                        background: '#4CAF50',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '3px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -922,46 +593,13 @@ function App() {
         )}
 
         <div className="cloud-section">
-          <h3>🔄 Load from Cloud</h3>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <input
-              type="text"
-              placeholder="Enter Share ID"
-              className="share-id-input"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  const shareId = e.target.value.trim()
-                  if (shareId) {
-                    loadFromCloud(shareId)
-                    e.target.value = ''
-                  }
-                }
-              }}
-            />
-            <button 
-              onClick={() => {
-                const input = document.querySelector('.share-id-input')
-                const shareId = input?.value.trim()
-                if (shareId) {
-                  loadFromCloud(shareId)
-                  input.value = ''
-                }
-              }}
-              className="load-btn"
-              disabled={syncStatus === 'loading'}
-            >
-              {syncStatus === 'loading' ? '📥 Loading...' : '📥 Load Data'}
-            </button>
-            {binId && (
-              <button 
-                onClick={() => loadFromCloud()}
-                className="refresh-btn"
-                disabled={syncStatus === 'loading'}
-              >
-                {syncStatus === 'loading' ? '🔄 Refreshing...' : '🔄 Refresh My Data'}
-              </button>
-            )}
-          </div>
+          <button
+            onClick={() => loadFromCloud()}
+            className="refresh-btn"
+            disabled={syncStatus === 'loading'}
+          >
+            {syncStatus === 'loading' ? '🔄 Loading...' : '🔄 Refresh from Cloud'}
+          </button>
         </div>
 
         {lastFileName && (
