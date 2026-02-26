@@ -658,11 +658,13 @@ function App() {
           const handleMouseEnter = (e) => {
             const content = rect.getAttribute('title')
             if (content) {
+              const vvLeft = window.visualViewport?.offsetLeft ?? 0
+              const vvTop = window.visualViewport?.offsetTop ?? 0
               setTooltip({
                 show: true,
                 content,
-                x: e.clientX + 12,
-                y: e.clientY - 10
+                x: e.clientX - vvLeft + 12,
+                y: e.clientY - vvTop - 10
               })
             }
           }
@@ -690,10 +692,12 @@ function App() {
       const el = tooltipRef.current
       const { right, bottom, width, height } = el.getBoundingClientRect()
       const margin = 8
-      if (right > window.innerWidth - margin) {
+      const vw = window.visualViewport?.width ?? window.innerWidth
+      const vh = window.visualViewport?.height ?? window.innerHeight
+      if (right > vw - margin) {
         el.style.left = Math.max(margin, tooltip.x - width - 24) + 'px'
       }
-      if (bottom > window.innerHeight - margin) {
+      if (bottom > vh - margin) {
         el.style.top = Math.max(margin, tooltip.y - height - 10) + 'px'
       }
     }
