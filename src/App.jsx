@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import { version } from '../package.json'
 import CalendarHeatmap from 'react-calendar-heatmap'
 import Papa from 'papaparse'
 import { subDays, format, parseISO } from 'date-fns'
@@ -750,7 +751,7 @@ function App() {
 
   return (
     <div className="app">
-      <h1>📅 Streak Calendar Visualization <span style={{ fontSize: '0.5em', opacity: 0.5, fontWeight: 'normal' }}>v1.0.2</span></h1>
+      <h1>📅 Streak Calendar Visualization <span style={{ fontSize: '0.5em', opacity: 0.5, fontWeight: 'normal' }}>v{version}</span></h1>
 
       <div className="controls">
         <div className="upload-section">
