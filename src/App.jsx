@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import CalendarHeatmap from 'react-calendar-heatmap'
 import Papa from 'papaparse'
 import { subDays, format, parseISO } from 'date-fns'
@@ -13,7 +13,8 @@ function App() {
   const [lastFileName, setLastFileName] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const calendarRef = useRef(null)
-  const [tooltip, setTooltip] = useState({ show: false, content: '', x: 0, y: 0, rightAlign: false })
+  const tooltipRef = useRef(null)
+  const [tooltip, setTooltip] = useState({ show: false, content: '', x: 0, y: 0 })
   const [syncStatus, setSyncStatus] = useState('idle') // 'idle', 'loading', 'success', 'error'
   const [binId, setBinId] = useState(null)
   const [customId, setCustomId] = useState(null)
@@ -657,17 +658,11 @@ function App() {
           const handleMouseEnter = (e) => {
             const content = rect.getAttribute('title')
             if (content) {
-              const containerRect = calendarRef.current.getBoundingClientRect()
-              // Flip tooltip to the left when near the right edge of the viewport
-              const isNearRightEdge = e.clientX + 160 > window.innerWidth
               setTooltip({
                 show: true,
                 content,
-                x: isNearRightEdge
-                  ? e.clientX - containerRect.left - 10
-                  : e.clientX - containerRect.left + 10,
-                y: e.clientY - containerRect.top - 10,
-                rightAlign: isNearRightEdge
+                x: e.clientX + 12,
+                y: e.clientY - 10
               })
             }
           }
@@ -688,6 +683,21 @@ function App() {
       return () => clearTimeout(timer)
     }
   }, [data])
+
+  // After tooltip renders, clamp it so it never overflows the viewport edges
+  useLayoutEffect(() => {
+    if (tooltip.show && tooltipRef.current) {
+      const el = tooltipRef.current
+      const { right, bottom, width, height } = el.getBoundingClientRect()
+      const margin = 8
+      if (right > window.innerWidth - margin) {
+        el.style.left = Math.max(margin, tooltip.x - width - 24) + 'px'
+      }
+      if (bottom > window.innerHeight - margin) {
+        el.style.top = Math.max(margin, tooltip.y - height - 10) + 'px'
+      }
+    }
+  }, [tooltip])
 
   // Get tooltip content
   const getTooltipDataAttrs = (value) => {
@@ -736,7 +746,7 @@ function App() {
 
   return (
     <div className="app">
-      <h1>📅 Streak Calendar Visualization</h1>
+      <h1>📅 Streak Calendar Visualization <span style={{ fontSize: '0.5em', opacity: 0.5, fontWeight: 'normal' }}>v1.0.2</span></h1>
 
       <div className="controls">
         <div className="upload-section">
@@ -913,11 +923,11 @@ function App() {
             />
             {tooltip.show && (
               <div
+                ref={tooltipRef}
                 style={{
-                  position: 'absolute',
+                  position: 'fixed',
                   left: tooltip.x,
                   top: tooltip.y,
-                  transform: tooltip.rightAlign ? 'translateX(-100%)' : 'none',
                   background: 'rgba(0, 0, 0, 0.8)',
                   color: 'white',
                   padding: '8px 12px',
