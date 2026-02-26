@@ -13,7 +13,7 @@ function App() {
   const [lastFileName, setLastFileName] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const calendarRef = useRef(null)
-  const [tooltip, setTooltip] = useState({ show: false, content: '', x: 0, y: 0 })
+  const [tooltip, setTooltip] = useState({ show: false, content: '', x: 0, y: 0, rightAlign: false })
   const [syncStatus, setSyncStatus] = useState('idle') // 'idle', 'loading', 'success', 'error'
   const [binId, setBinId] = useState(null)
   const [customId, setCustomId] = useState(null)
@@ -658,11 +658,16 @@ function App() {
             const content = rect.getAttribute('title')
             if (content) {
               const containerRect = calendarRef.current.getBoundingClientRect()
+              // Flip tooltip to the left when near the right edge of the viewport
+              const isNearRightEdge = e.clientX + 160 > window.innerWidth
               setTooltip({
                 show: true,
                 content,
-                x: e.clientX - containerRect.left + 10,
-                y: e.clientY - containerRect.top - 10
+                x: isNearRightEdge
+                  ? e.clientX - containerRect.left - 10
+                  : e.clientX - containerRect.left + 10,
+                y: e.clientY - containerRect.top - 10,
+                rightAlign: isNearRightEdge
               })
             }
           }
@@ -912,6 +917,7 @@ function App() {
                   position: 'absolute',
                   left: tooltip.x,
                   top: tooltip.y,
+                  transform: tooltip.rightAlign ? 'translateX(-100%)' : 'none',
                   background: 'rgba(0, 0, 0, 0.8)',
                   color: 'white',
                   padding: '8px 12px',
