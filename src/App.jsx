@@ -656,30 +656,43 @@ function App() {
         // Add custom tooltip handlers
         const rects = calendarRef.current.querySelectorAll('rect[title]')
         rects.forEach(rect => {
-          const handleMouseEnter = (e) => {
+          const showTooltipForRect = () => {
             const content = rect.getAttribute('title')
             if (content) {
-              const vvLeft = window.visualViewport?.offsetLeft ?? 0
-              const vvTop = window.visualViewport?.offsetTop ?? 0
+              // getBoundingClientRect() returns coords in visual-viewport CSS-pixel space,
+              // which is the same space that position:fixed uses — works correctly at any zoom level.
+              const bbox = rect.getBoundingClientRect()
               setTooltip({
                 show: true,
                 content,
-                x: e.clientX - vvLeft + 12,
-                y: e.clientY - vvTop - 10
+                x: bbox.right + 4,
+                y: bbox.top
               })
             }
           }
+
+          const handleMouseEnter = () => showTooltipForRect()
 
           const handleMouseLeave = () => {
             setTooltip({ show: false, content: '', x: 0, y: 0 })
           }
 
+          const handleTouchStart = () => showTooltipForRect()
+
+          const handleTouchEnd = () => {
+            setTimeout(() => setTooltip({ show: false, content: '', x: 0, y: 0 }), 1500)
+          }
+
           rect.addEventListener('mouseenter', handleMouseEnter)
           rect.addEventListener('mouseleave', handleMouseLeave)
+          rect.addEventListener('touchstart', handleTouchStart, { passive: true })
+          rect.addEventListener('touchend', handleTouchEnd, { passive: true })
 
           return () => {
             rect.removeEventListener('mouseenter', handleMouseEnter)
             rect.removeEventListener('mouseleave', handleMouseLeave)
+            rect.removeEventListener('touchstart', handleTouchStart)
+            rect.removeEventListener('touchend', handleTouchEnd)
           }
         })
       }, 100)
