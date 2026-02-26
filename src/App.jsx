@@ -942,6 +942,7 @@ function App() {
             {tooltip.show && (
               <div
                 ref={tooltipRef}
+                data-testid="calendar-tooltip"
                 style={{
                   position: 'fixed',
                   left: tooltip.x,
